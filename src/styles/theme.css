@@ -1,0 +1,38 @@
+/* Edit this file to reskin the entire workspace. RGB channels support alpha overlays. */
+:root {
+  color-scheme: dark;
+  --background: #111318;
+  --sidebar: #16181e;
+  --surface: #1a1d24;
+  --surface-raised: #20242c;
+  --surface-hover: #282d37;
+  --input: #15181e;
+  --border: #2b2f38;
+  --border-subtle: #232730;
+  --text: #eceef3;
+  --text-secondary: #a4abb9;
+  --text-muted: #777f90;
+  --accent: #8ea5ff;
+  --accent-strong: #7187ed;
+  --accent-rgb: 142, 165, 255;
+  --on-accent: #10162d;
+  --success: #87c9ae;
+  --success-rgb: 135, 201, 174;
+  --warning: #e4bd83;
+  --warning-rgb: 228, 189, 131;
+  --danger: #f29199;
+  --danger-rgb: 242, 145, 153;
+  --character: #b6a1eb;
+  --character-rgb: 182, 161, 235;
+  --region: #8bc4a8;
+  --region-rgb: 139, 196, 168;
+  --item: #d9b67e;
+  --item-rgb: 217, 182, 126;
+  --character-type: #8eafe4;
+  --character-type-rgb: 142, 175, 228;
+  --overlay-rgb: 7, 10, 17;
+  --radius: 10px;
+  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --font-display:
+    "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+}
