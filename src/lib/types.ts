@@ -3,6 +3,7 @@ export const entityKinds = [
   "character",
   "region",
   "item",
+  "storyEvent",
 ] as const;
 export type EntityKind = (typeof entityKinds)[number];
 export type ProjectStatus = "concept" | "in-progress" | "completed";
@@ -34,6 +35,31 @@ export interface NarrativeEntity {
 }
 export type ActionResult = { error?: string; id?: string; success?: boolean };
 
+// ========== Story event types ==========
+
+export interface StoryEventSubsection {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface StoryEventSection {
+  id: string;
+  title: string;
+  description: string;
+  subsections: StoryEventSubsection[];
+}
+
+export interface StoryEvent {
+  id: string;
+  projectId: string;
+  title: string;
+  image: string | null;
+  sections: StoryEventSection[];
+  characterIds: string[];
+  updatedAt: string;
+}
+
 export const entityLabels: Record<
   EntityKind,
   { singular: string; plural: string; description: string }
@@ -57,5 +83,11 @@ export const entityLabels: Record<
     singular: "Character type",
     plural: "Character types",
     description: "Define the species, origins, and archetypes of your cast.",
+  },
+  storyEvent: {
+    singular: "Story event",
+    plural: "Story events",
+    description:
+      "The main events of your story, and the smaller events that shape them.",
   },
 };

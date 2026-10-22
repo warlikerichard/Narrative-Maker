@@ -33,6 +33,7 @@ import {
   Trash2,
   Users,
   X,
+  BookOpenText,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -53,12 +54,19 @@ import {
 } from "@/lib/types";
 import { EditorForm } from "./editor-form";
 import { Modal } from "./modal";
+import { StoryEventForm } from "./story-event-form";
+import {
+  clearLocalProjectEvents,
+  deleteLocalStoryEvent,
+  useLocalStoryEvents,
+} from "@/lib/local-story-events";
 
 const icons: Record<EntityKind, LucideIcon> = {
   character: Users,
   region: Map,
   item: Gem,
   characterType: Shapes,
+  storyEvent: BookOpenText,
 };
 const statusLabels = {
   concept: "Concept",
@@ -102,7 +110,50 @@ export function Workspace({
     error?: boolean;
   } | null>(null);
   const types = entities.filter((entity) => entity.kind === "characterType");
-  const totalEntries = projects.reduce(
+  const localStories = useLocalStoryEvents(user.id);
+  // Adapt local events for the existing cards only. Do not send these records to saveEntity.
+  const storyEntries: NarrativeEntity[] = localStories.events
+    .filter((event) => event.projectId === project?.id)
+    .map((event) => ({
+      id: event.id,
+      projectId: event.projectId,
+      kind: "storyEvent",
+      name: event.title || "Untitled event",
+      description:
+        event.sections
+          .map((section) =>
+            [
+              section.title,
+              section.description,
+              ...section.subsections.flatMap((subsection) => [
+                subsection.title,
+                subsection.description,
+              ]),
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          )
+          .join(" · ") || "Open the editor to start shaping this story.",
+      image: event.image,
+      characterTypeId: null,
+      updatedAt: event.updatedAt,
+    }));
+  const allEntries = [...entities, ...storyEntries];
+  const displayProjects = projects.map((entry) => {
+    const events = localStories.events.filter(
+      (event) => event.projectId === entry.id,
+    );
+    return {
+      ...entry,
+      entityCount: entry.entityCount + events.length,
+      updatedAt: events.reduce(
+        (latest, event) =>
+          event.updatedAt > latest ? event.updatedAt : latest,
+        entry.updatedAt,
+      ),
+    };
+  });
+  const totalEntries = displayProjects.reduce(
     (sum, entry) => sum + entry.entityCount,
     0,
   );
@@ -141,6 +192,26 @@ export function Workspace({
 
   async function confirmDelete() {
     if (!deletion) return;
+    if (deletion.type === "entity" && deletion.entity.kind === "storyEvent") {
+      try {
+        deleteLocalStoryEvent(
+          user.id,
+          deletion.entity.projectId,
+          deletion.entity.id,
+        );
+        setDeletion(null);
+        setMessage({ text: "Story event deleted from this browser." });
+      } catch (error) {
+        setMessage({
+          text:
+            error instanceof Error
+              ? error.message
+              : "Could not delete this event.",
+          error: true,
+        });
+      }
+      return;
+    }
     const result = await run(
       () =>
         deletion.type === "project"
@@ -149,13 +220,23 @@ export function Workspace({
       "Deleted successfully.",
     );
     if (result?.success) {
+      if (deletion.type === "project") {
+        try {
+          clearLocalProjectEvents(user.id, deletion.project.id);
+        } catch {
+          setMessage({
+            text: "Project deleted. Its local story events could not be cleared from this browser.",
+            error: true,
+          });
+        }
+      }
       setDeletion(null);
       if (deletion.type === "project" && project?.id === deletion.project.id)
         router.push("/");
     }
   }
 
-  const filteredProjects = projects
+  const filteredProjects = displayProjects
     .filter(
       (entry) =>
         (filter !== "favorites" || entry.favorite) &&
@@ -168,7 +249,7 @@ export function Workspace({
         ? a.name.localeCompare(b.name)
         : b.updatedAt.localeCompare(a.updatedAt),
     );
-  const filteredEntities = entities
+  const filteredEntities = allEntries
     .filter(
       (entry) =>
         (kind === "overview" || entry.kind === kind) &&
@@ -392,8 +473,9 @@ export function Workspace({
                       <span>
                         <strong>
                           {
-                            entities.filter((entry) => entry.kind === entryKind)
-                              .length
+                            allEntries.filter(
+                              (entry) => entry.kind === entryKind,
+                            ).length
                           }
                         </strong>
                         <small>{entityLabels[entryKind].plural}</small>
@@ -496,14 +578,14 @@ export function Workspace({
                         setQuery("");
                       }}
                     >
-                      All entries <span>{entities.length}</span>
+                      All entries <span>{allEntries.length}</span>
                     </button>
                     {kind !== "overview" && (
                       <button className="active">
                         {entityLabels[kind].plural}{" "}
                         <span>
                           {
-                            entities.filter((entry) => entry.kind === kind)
+                            allEntries.filter((entry) => entry.kind === kind)
                               .length
                           }
                         </span>
@@ -598,6 +680,17 @@ export function Workspace({
                 </div>
               </div>
             </div>
+            {localStories.error && (
+              <p className="form-error" role="alert">
+                {localStories.error}
+              </p>
+            )}
+            {project && kind === "storyEvent" && (
+              <p className="story-local-note story-library-note">
+                Story events are saved in this browser only. Open an event to
+                edit its sections and characters.
+              </p>
+            )}
             {project ? (
               <>
                 {filteredEntities.length ? (
@@ -613,13 +706,23 @@ export function Workspace({
                             (type) => type.id === entity.characterTypeId,
                           )?.name
                         }
-                        onOpen={() => setDetails(entity)}
+                        onOpen={() =>
+                          entity.kind === "storyEvent"
+                            ? router.push(
+                                `/projects/${entity.projectId}/story-events/${entity.id}`,
+                              )
+                            : setDetails(entity)
+                        }
                         onEdit={() =>
-                          setEditor({
-                            type: "entity",
-                            kind: entity.kind,
-                            entity,
-                          })
+                          entity.kind === "storyEvent"
+                            ? router.push(
+                                `/projects/${entity.projectId}/story-events/${entity.id}`,
+                              )
+                            : setEditor({
+                                type: "entity",
+                                kind: entity.kind,
+                                entity,
+                              })
                         }
                         onDelete={() => {
                           setMessage(null);
@@ -777,21 +880,31 @@ export function Workspace({
           </button>
         </div>
       )}
-      {editor && (
-        <EditorForm
-          key={
-            editor.type === "project"
-              ? (editor.project?.id ?? "new-project")
-              : (editor.entity?.id ?? editor.kind)
-          }
-          project={editor.type === "project" ? editor.project : undefined}
-          entity={editor.type === "entity" ? editor.entity : undefined}
-          kind={editor.type === "entity" ? editor.kind : undefined}
-          projectId={project?.id}
-          types={types}
-          onClose={() => setEditor(null)}
-        />
-      )}
+      {editor &&
+        (editor.type === "entity" && editor.kind === "storyEvent" ? (
+          project && (
+            <StoryEventForm
+              key={editor.entity?.id ?? "new-story-event"}
+              userId={user.id}
+              projectId={project.id}
+              onClose={() => setEditor(null)}
+            />
+          )
+        ) : (
+          <EditorForm
+            key={
+              editor.type === "project"
+                ? (editor.project?.id ?? "new-project")
+                : (editor.entity?.id ?? editor.kind)
+            }
+            project={editor.type === "project" ? editor.project : undefined}
+            entity={editor.type === "entity" ? editor.entity : undefined}
+            kind={editor.type === "entity" ? editor.kind : undefined}
+            projectId={project?.id}
+            types={types}
+            onClose={() => setEditor(null)}
+          />
+        ))}
       {deletion && (
         <Modal
           title={`Delete ${deletion.type === "project" ? "project" : entityLabels[deletion.entity.kind].singular.toLowerCase()}?`}
@@ -805,7 +918,7 @@ export function Workspace({
               : deletion.entity.name}
             ” will be permanently deleted.
             {deletion.type === "project" &&
-              " All characters, regions, items, and character types inside it will also be deleted."}{" "}
+              " All characters, regions, items, character types, and story events in this browser will also be deleted."}{" "}
             This cannot be undone.
           </p>
           {message?.error && (
@@ -1022,7 +1135,7 @@ function EntityCard({
         <div className="card-meta">
           <span>{formatDate(entity.updatedAt)}</span>
           <button className="text-button" onClick={onOpen}>
-            View details
+            {entity.kind === "storyEvent" ? "Open editor" : "View details"}
             <ArrowRight size={13} />
           </button>
         </div>

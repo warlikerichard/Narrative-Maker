@@ -11,7 +11,10 @@ export default defineConfig({
     command: "npm run dev -- --port 3100",
     url: "http://localhost:3100/login",
     reuseExistingServer: false,
-    env: { DATABASE_PATH: `./data/e2e-${Date.now()}.db` },
+    env: {
+      DATABASE_PATH: `./data/e2e-${Date.now()}.db`,
+      NEXT_DIST_DIR: ".next-e2e",
+    },
     timeout: 120000,
   },
 });

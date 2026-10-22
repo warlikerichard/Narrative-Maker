@@ -36,6 +36,8 @@ To change the database location, copy `.env.example` to `.env.local` and edit `D
 
 ## Code map
 
+Story events now have a dedicated creation modal and editing page. They are a **browser-only prototype** with localStorage persistence; unlike the original entities, they are not saved in SQLite. See [the story-event learning guide](docs/story-events.md) for the UI/state flow and the database work left for later.
+
 ```text
 src/
   app/

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@/styles/theme.css";
 import "./globals.css";
+import "@/styles/story-events.css";
 
 export const metadata: Metadata = {
   title: "Narrative Maker — Your next world starts here",
