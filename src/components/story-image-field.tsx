@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { compressImage } from "@/app/actions";
 import { ImagePlus, Trash2 } from "lucide-react";
 
 export function StoryImageField({
@@ -26,24 +27,21 @@ export function StoryImageField({
     setError("");
     if (
       !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
-      file.size > 2 * 1024 * 1024
+      file.size > 10 * 1024 * 1024
     ) {
-      setError("Choose a PNG, JPEG, or WebP image up to 2 MB.");
+      setError(
+        "Choose a PNG, JPEG, or WebP image up to 10 MB; compressed to 200 KB.",
+      );
       return;
     }
     setBusy(true);
     onBusyChange?.(true);
     try {
-      const data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error("Could not read this image."));
-        reader.readAsDataURL(file);
-      });
-      const preview = new Image();
-      preview.src = data;
-      await preview.decode();
-      latestChange.current(data);
+      const form = new FormData();
+      form.set("image", file);
+      const result = await compressImage(form);
+      if (!result.image) throw new Error(result.error);
+      latestChange.current(result.image);
     } catch {
       setError("Could not open this image. Please choose a different file.");
     } finally {
@@ -62,7 +60,11 @@ export function StoryImageField({
         )}
         <div>
           <label className="button secondary file-picker">
-            {busy ? "Reading image…" : image ? "Change cover" : "Upload cover"}
+            {busy
+              ? "Compressing image…"
+              : image
+                ? "Change cover"
+                : "Upload cover"}
             <input
               type="file"
               aria-label="Story event image"
@@ -71,7 +73,9 @@ export function StoryImageField({
               onChange={selectFile}
             />
           </label>
-          <small>Optional · PNG, JPG or WebP · up to 2 MB</small>
+          <small>
+            Optional · PNG, JPG or WebP · up to 10 MB; compressed to 200 KB
+          </small>
           {image && (
             <button
               type="button"

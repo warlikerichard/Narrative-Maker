@@ -137,6 +137,7 @@ function AuthFields({ mode }: { mode: "login" | "register" }) {
           maxLength={128}
         />
       </label>
+      {state.message && <p role="status">{state.message}</p>}
       {state.error && (
         <p role="alert" className="form-error">
           {state.error}

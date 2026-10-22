@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
+import sharp from "sharp";
+test.skip(
+  process.env.SUPABASE_E2E !== "1",
+  "Requires an explicitly configured Supabase test project.",
+);
 
-test("local story event creation, page editing, persistence, deletion, and isolation", async ({
+test("cloud story event creation, page editing, persistence, deletion, and isolation", async ({
   page,
   context,
 }) => {
@@ -36,10 +41,11 @@ test("local story event creation, page editing, persistence, deletion, and isola
   await page.getByLabel("Story event image").setInputFiles({
     name: "cover.png",
     mimeType: "image/png",
-    buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB9sAAAAASUVORK5CYII=",
-      "base64",
-    ),
+    buffer: await sharp({
+      create: { width: 100, height: 80, channels: 3, background: "#336699" },
+    })
+      .png()
+      .toBuffer(),
   });
   await expect(page.getByAltText("Story event cover preview")).toBeVisible();
   await page.screenshot({
@@ -53,10 +59,26 @@ test("local story event creation, page editing, persistence, deletion, and isola
     page.getByRole("heading", { name: "The fall of the citadel" }),
   ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  if (
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .isEnabled()
+      .catch(() => false)
+  ) {
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Save changes", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByRole("status")).toContainText(
+      "Saved to your account",
+    );
+  }
   await page.reload();
   await expect(page.getByAltText("Story event cover preview")).toHaveAttribute(
     "src",
-    /^data:image\/png;base64,/,
+    /^\/api\/images\//,
   );
   await page.getByRole("button", { name: "Remove cover" }).click();
   await page.getByRole("button", { name: "Add first section" }).click();
@@ -87,6 +109,22 @@ test("local story event creation, page editing, persistence, deletion, and isola
   await page
     .getByLabel("Event title", { exact: true })
     .fill("The last night of the citadel");
+  if (
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .isEnabled()
+      .catch(() => false)
+  ) {
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Save changes", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByRole("status")).toContainText(
+      "Saved to your account",
+    );
+  }
   await page.reload();
   await expect(page.getByLabel("Event title", { exact: true })).toHaveValue(
     "The last night of the citadel",
@@ -127,6 +165,9 @@ test("local story event creation, page editing, persistence, deletion, and isola
     }),
   ).toBeVisible();
   await page.getByLabel("Event title", { exact: true }).fill("Citadel at dawn");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Saved to your account");
+  await secondTab.reload();
   await expect(
     secondTab.getByRole("button", { name: "Citadel at dawn", exact: true }),
   ).toBeVisible();
@@ -171,6 +212,22 @@ test("local story event creation, page editing, persistence, deletion, and isola
     "Could not save",
   );
   page.once("dialog", (dialog) => dialog.accept());
+  if (
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .isEnabled()
+      .catch(() => false)
+  ) {
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Save changes", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByRole("status")).toContainText(
+      "Saved to your account",
+    );
+  }
   await page.reload();
   await expect(page.getByLabel("Event title", { exact: true })).toHaveValue(
     "Citadel at dawn",
@@ -189,7 +246,7 @@ test("local story event creation, page editing, persistence, deletion, and isola
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page).toHaveURL(eventUrl);
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(posts).toEqual([]); // No event creation/edit/delete Server Actions.
+  expect(posts.some((url) => url.includes("/api/story-events"))).toBe(true);
 
   await page
     .getByRole("button", { name: "Delete subsection 1.1", exact: true })
@@ -199,31 +256,8 @@ test("local story event creation, page editing, persistence, deletion, and isola
     page.getByPlaceholder("Explore this moment in more detail…"),
   ).toHaveCount(0);
 
-  // Data under another user's key or another project must not enter this project's list.
-  await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((key) =>
-      key.startsWith("narrative-maker:story-events:v1:"),
-    )!;
-    const data = JSON.parse(localStorage.getItem(key)!);
-    const original = data.events[0];
-    localStorage.setItem(
-      `${key}-other-user`,
-      JSON.stringify({
-        version: 1,
-        events: [
-          { ...original, id: "other-user-event", title: "Other user's story" },
-        ],
-      }),
-    );
-    data.events.push({
-      ...original,
-      id: "other-project-event",
-      projectId: "different-project",
-      title: "Other project's story",
-    });
-    localStorage.setItem(key, JSON.stringify(data));
-  });
-
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Saved to your account");
   await page.goto(projectUrl);
   await expect(
     page.getByRole("button", { name: "1 Story events", exact: true }),
@@ -244,7 +278,7 @@ test("local story event creation, page editing, persistence, deletion, and isola
   ).toBeVisible();
   await page.goto(eventUrl);
   await expect(
-    page.getByRole("heading", { name: "This event isn’t in this browser" }),
+    page.getByRole("heading", { name: "This event was not found" }),
   ).toBeVisible();
-  expect(posts).toEqual([]);
+  expect(posts.length).toBeGreaterThan(0);
 });

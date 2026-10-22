@@ -3,20 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ZodError } from "zod";
-import {
-  consumeAuthAttempt,
-  createUser,
-  endSession,
-  requireUser,
-  startSession,
-  verifyPassword,
-} from "@/lib/auth";
+import { endSession, requireUser } from "@/lib/auth";
+import { uploadImage, BUCKET } from "@/lib/images";
 import { getDatabase } from "@/lib/database";
 import { NarrativeRepository } from "@/lib/repository";
 import {
   entitySchema,
   projectSchema,
-  readImage,
   registrationSchema,
 } from "@/lib/validation";
 import { entityKinds, type ActionResult, type EntityKind } from "@/lib/types";
@@ -34,37 +27,35 @@ export async function authenticate(
   _previous: ActionResult,
   form: FormData,
 ): Promise<ActionResult> {
-  let userId: string;
   try {
+    const db = await getDatabase();
     const email = String(form.get("email") || "")
       .trim()
       .toLowerCase();
     const password = String(form.get("password") || "");
     if (!email || email.length > 254 || !password || password.length > 128)
       return { error: "Enter a valid email and password." };
-    consumeAuthAttempt(email);
     if (mode === "register") {
-      const data = registrationSchema.parse({
+      const input = registrationSchema.parse({
         name: form.get("name"),
         email,
         password,
       });
-      userId = await createUser(data.name, data.email, data.password);
-    } else {
-      const user = getDatabase()
-        .prepare("SELECT id,password_hash FROM users WHERE email=?")
-        .get(email) as { id: string; password_hash: string } | undefined;
-      // Perform the same expensive hash operation for unknown accounts.
-      const valid = await verifyPassword(
+      const { data, error } = await db.auth.signUp({
+        email,
         password,
-        user?.password_hash ?? `${"0".repeat(32)}:${"0".repeat(128)}`,
-      );
-      if (!user || !valid)
-        return { error: "The email or password is incorrect." };
-      userId = user.id;
+        options: { data: { name: input.name } },
+      });
+      if (error) return { error: error.message };
+      if (!data.session)
+        return {
+          success: true,
+          message: "Check your email to confirm your account, then sign in.",
+        };
+    } else {
+      const { error } = await db.auth.signInWithPassword({ email, password });
+      if (error) return { error: error.message };
     }
-    await startSession(userId);
-    getDatabase().prepare("DELETE FROM auth_attempts WHERE email=?").run(email);
   } catch (error) {
     return errorResult(error);
   }
@@ -78,20 +69,28 @@ export async function signOut() {
 
 export async function saveProject(form: FormData): Promise<ActionResult> {
   const user = await requireUser();
+  let uploaded: string | null | undefined;
   try {
     const data = projectSchema.parse({
       name: form.get("name"),
       description: form.get("description"),
       status: form.get("status"),
     });
-    const id = new NarrativeRepository(getDatabase()).saveProject(
+    uploaded = await readImage(form, user.id);
+    const id = await new NarrativeRepository(await getDatabase()).saveProject(
       user.id,
-      { ...data, image: await readImage(form) },
+      { ...data, image: uploaded },
       String(form.get("id") || "") || undefined,
     );
     revalidatePath("/", "layout");
     return { success: true, id };
   } catch (error) {
+    if (uploaded?.startsWith("/api/images/"))
+      await (
+        await getDatabase()
+      ).storage
+        .from(BUCKET)
+        .remove([uploaded.slice(12)]);
     return errorResult(error);
   }
 }
@@ -99,7 +98,10 @@ export async function saveProject(form: FormData): Promise<ActionResult> {
 export async function deleteProject(id: string): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    new NarrativeRepository(getDatabase()).deleteProject(user.id, id);
+    await new NarrativeRepository(await getDatabase()).deleteProject(
+      user.id,
+      id,
+    );
     revalidatePath("/", "layout");
     return { success: true };
   } catch (error) {
@@ -110,7 +112,10 @@ export async function deleteProject(id: string): Promise<ActionResult> {
 export async function toggleFavorite(id: string): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    new NarrativeRepository(getDatabase()).toggleFavorite(user.id, id);
+    await new NarrativeRepository(await getDatabase()).toggleFavorite(
+      user.id,
+      id,
+    );
     revalidatePath("/", "layout");
     return { success: true };
   } catch (error) {
@@ -120,6 +125,7 @@ export async function toggleFavorite(id: string): Promise<ActionResult> {
 
 export async function saveEntity(form: FormData): Promise<ActionResult> {
   const user = await requireUser();
+  let uploaded: string | null | undefined;
   try {
     const data = entitySchema.parse({
       name: form.get("name"),
@@ -127,15 +133,22 @@ export async function saveEntity(form: FormData): Promise<ActionResult> {
       kind: form.get("kind"),
       characterTypeId: form.get("characterTypeId") || null,
     });
-    const id = new NarrativeRepository(getDatabase()).saveEntity(
+    uploaded = await readImage(form, user.id);
+    const id = await new NarrativeRepository(await getDatabase()).saveEntity(
       user.id,
       String(form.get("projectId")),
-      { ...data, image: await readImage(form) },
+      { ...data, image: uploaded },
       String(form.get("id") || "") || undefined,
     );
     revalidatePath("/", "layout");
     return { success: true, id };
   } catch (error) {
+    if (uploaded?.startsWith("/api/images/"))
+      await (
+        await getDatabase()
+      ).storage
+        .from(BUCKET)
+        .remove([uploaded.slice(12)]);
     return errorResult(error);
   }
 }
@@ -148,7 +161,7 @@ export async function deleteEntity(
   const user = await requireUser();
   try {
     if (!entityKinds.includes(kind)) return { error: "Unknown entry type." };
-    new NarrativeRepository(getDatabase()).deleteEntity(
+    await new NarrativeRepository(await getDatabase()).deleteEntity(
       user.id,
       projectId,
       kind,
@@ -164,10 +177,41 @@ export async function deleteEntity(
 export async function createExample(): Promise<ActionResult> {
   const user = await requireUser();
   try {
-    const id = new NarrativeRepository(getDatabase()).createExample(user.id);
+    const id = await new NarrativeRepository(await getDatabase()).createExample(
+      user.id,
+    );
     revalidatePath("/", "layout");
     return { success: true, id };
   } catch (error) {
     return errorResult(error);
+  }
+}
+
+async function readImage(form: FormData, userId: string) {
+  const file = form.get("image");
+  if (file instanceof File && file.size)
+    return uploadImage(
+      await getDatabase(),
+      userId,
+      Buffer.from(await file.arrayBuffer()),
+    );
+  return form.get("removeImage") === "true" ? null : undefined;
+}
+
+export async function compressImage(
+  form: FormData,
+): Promise<{ image?: string; error?: string }> {
+  await requireUser();
+  try {
+    const file = form.get("image");
+    if (!(file instanceof File)) return { error: "Choose an image." };
+    const { optimizeImage } = await import("@/lib/image-processing");
+    const bytes = await optimizeImage(Buffer.from(await file.arrayBuffer()));
+    return { image: `data:image/webp;base64,${bytes.toString("base64")}` };
+  } catch {
+    return {
+      error:
+        "Could not compress this image. Use a static PNG, JPEG, or WebP up to 10 MB.",
+    };
   }
 }

@@ -19,10 +19,10 @@ import {
   Users,
 } from "lucide-react";
 import {
-  deleteLocalStoryEvent,
-  saveLocalStoryEvent,
-  useLocalStoryEvents,
-} from "@/lib/local-story-events";
+  deleteStoryEvent,
+  saveStoryEvent,
+  useStoryEvents,
+} from "@/lib/story-events";
 import type {
   NarrativeEntity,
   Project,
@@ -43,7 +43,7 @@ export function StoryEventEditor({
   eventId: string;
   characters: NarrativeEntity[];
 }) {
-  const local = useLocalStoryEvents(userId);
+  const local = useStoryEvents(userId);
   if (!local.ready)
     return (
       <main className="standalone-state" aria-live="polite">
@@ -60,12 +60,12 @@ export function StoryEventEditor({
         <BookOpenText size={40} />
         <h1>
           {local.error
-            ? "Could not open your local events"
-            : "This event isn’t in this browser"}
+            ? "Could not open your events"
+            : "This event was not found"}
         </h1>
         <p>
           {local.error ??
-            "It may have been deleted or created in a different browser. Story events are currently saved on this device only."}
+            "It may have been deleted, or you may not have access to it."}
         </p>
         <Link className="button primary" href={`/projects/${project.id}`}>
           Back to project
@@ -114,37 +114,45 @@ function EventDocument({
     (id) => !characters.some((character) => character.id === id),
   );
 
-  // UI state remains usable even if the browser cannot persist it. Never claim a failed write was saved.
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
   function update(next: StoryEvent) {
-    const updated = { ...next, updatedAt: new Date().toISOString() };
-    setDraft(updated);
+    if (saving) return false;
+    setDraft(next);
+    setDirty(true);
+    return true;
+  }
+  async function save() {
+    if (saving || imageBusy) return;
+    setSaving(true);
     try {
-      saveLocalStoryEvent(userId, updated, savedVersion.current);
-      savedVersion.current = updated.updatedAt;
+      const saved = await saveStoryEvent(userId, draft, savedVersion.current);
+      savedVersion.current = saved.updatedAt;
+      setDraft(saved);
+      setDirty(false);
       setError("");
-      return true;
     } catch (error) {
       setError(
-        error instanceof Error
-          ? error.message
-          : "Could not save your changes in this browser.",
+        error instanceof Error ? error.message : "Could not save your changes.",
       );
-      return false;
+    } finally {
+      setSaving(false);
     }
   }
 
   useEffect(() => {
-    if (!error) return;
+    if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [error]);
+  }, [dirty]);
 
   function beforeLeave(event: React.MouseEvent<HTMLAnchorElement>) {
     if (
-      error &&
+      dirty &&
       !window.confirm(
         "Some changes have not been saved. Leave this page anyway?",
       )
@@ -188,11 +196,11 @@ function EventDocument({
     });
   }
 
-  function confirmRemoval() {
+  async function confirmRemoval() {
     if (!removal) return;
     if (removal.kind === "event") {
       try {
-        deleteLocalStoryEvent(userId, project.id, draft.id);
+        await deleteStoryEvent(userId, project.id, draft.id);
         router.push(projectHref);
       } catch (error) {
         setError(
@@ -235,7 +243,18 @@ function EventDocument({
           role="status"
         >
           <Check size={14} />
-          {error ? "Changes not saved" : "Saved in this browser"}
+          {saving
+            ? "Saving…"
+            : dirty
+              ? "Unsaved changes"
+              : "Saved to your account"}
+          <button
+            className="button primary"
+            disabled={saving || imageBusy || !dirty}
+            onClick={save}
+          >
+            Save changes
+          </button>
         </span>
       </header>
       <main className="story-layout">
@@ -285,7 +304,11 @@ function EventDocument({
             </p>
           </div>
         </aside>
-        <div className="story-document">
+        <fieldset
+          className="story-document"
+          disabled={saving}
+          style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+        >
           <section id="event-details" className="story-document-header">
             <span className="eyebrow">
               <BookOpenText size={14} />
@@ -313,10 +336,7 @@ function EventDocument({
               <p role="alert" className="form-error">
                 {error}
               </p>
-              <button
-                className="button secondary"
-                onClick={() => update(draft)}
-              >
+              <button className="button secondary" onClick={save}>
                 Retry saving
               </button>
               <button
@@ -351,6 +371,7 @@ function EventDocument({
             </label>
             <StoryImageField
               image={draft.image}
+              onBusyChange={setImageBusy}
               onChange={(image) => update({ ...draft, image })}
             />
           </section>
@@ -591,11 +612,15 @@ function EventDocument({
             ))}
           </div>
           <p className="story-local-note story-bottom-note">
-            Changes save automatically in this browser. They are not synced to
-            your account or other devices.
+            Use Save changes to sync this event to your account and other
+            devices.
           </p>
-        </div>
-        <aside className="story-context">
+        </fieldset>
+        <fieldset
+          disabled={saving}
+          className="story-context"
+          style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+        >
           <section className="story-panel story-cast">
             <div className="story-context-heading">
               <Users size={18} />
@@ -678,10 +703,9 @@ function EventDocument({
           <section className="story-storage-note">
             <span className="tiny-dot" />
             <div>
-              <strong>A local draft</strong>
+              <strong>Saved with your account</strong>
               <p>
-                This event lives in this browser. Clearing browser data will
-                remove it.
+                Use Save changes to keep your work available across devices.
               </p>
             </div>
           </section>
@@ -692,7 +716,7 @@ function EventDocument({
             <Trash2 size={14} />
             Delete story event
           </button>
-        </aside>
+        </fieldset>
       </main>
       {removal && (
         <Modal

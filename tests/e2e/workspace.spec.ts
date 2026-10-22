@@ -1,4 +1,9 @@
 import { test, expect } from "@playwright/test";
+import sharp from "sharp";
+test.skip(
+  process.env.SUPABASE_E2E !== "1",
+  "Requires an explicitly configured Supabase test project.",
+);
 
 test("complete narrative workflow, persistence, access isolation, and responsive layout", async ({
   page,
@@ -40,10 +45,11 @@ test("complete narrative workflow, persistence, access isolation, and responsive
   await page.getByLabel("Upload image").setInputFiles({
     name: "portrait.png",
     mimeType: "image/png",
-    buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB9sAAAAASUVORK5CYII=",
-      "base64",
-    ),
+    buffer: await sharp({
+      create: { width: 100, height: 80, channels: 3, background: "#336699" },
+    })
+      .png()
+      .toBuffer(),
   });
   await page
     .getByRole("button", { name: "Create character", exact: true })
@@ -56,7 +62,7 @@ test("complete narrative workflow, persistence, access isolation, and responsive
   ).toBeVisible();
   await expect(page.getByRole("dialog").locator("img")).toHaveAttribute(
     "src",
-    /^data:image\/png;base64,/,
+    /^\/api\/images\//,
   );
   await page
     .getByRole("button", { name: "Edit character", exact: true })

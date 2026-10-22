@@ -12,8 +12,8 @@ export default async function ProjectPage({
 }) {
   const user = await requireUser();
   const { projectId } = await params;
-  const repository = new NarrativeRepository(getDatabase());
-  const projects = repository.listProjects(user.id);
+  const repository = new NarrativeRepository(await getDatabase());
+  const projects = await repository.listProjects(user.id);
   const project = projects.find((entry) => entry.id === projectId);
   if (!project) notFound();
   return (
@@ -22,7 +22,7 @@ export default async function ProjectPage({
       user={user}
       projects={projects}
       project={project}
-      entities={repository.listEntities(user.id, projectId)}
+      entities={await repository.listEntities(user.id, projectId)}
     />
   );
 }

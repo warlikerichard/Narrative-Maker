@@ -13,15 +13,14 @@ export default async function StoryEventPage({
 }) {
   const user = await requireUser();
   const { projectId, eventId } = await params;
-  const repository = new NarrativeRepository(getDatabase());
-  const project = repository
-    .listProjects(user.id)
-    .find((entry) => entry.id === projectId);
+  const repository = new NarrativeRepository(await getDatabase());
+  const project = (await repository.listProjects(user.id)).find(
+    (entry) => entry.id === projectId,
+  );
   if (!project) notFound();
-  // Only existing project/character data is read from SQLite. Events remain in the browser.
-  const characters = repository
-    .listEntities(user.id, projectId)
-    .filter((entry) => entry.kind === "character");
+  const characters = (await repository.listEntities(user.id, projectId)).filter(
+    (entry) => entry.kind === "character",
+  );
   return (
     <StoryEventEditor
       key={`${user.id}:${projectId}:${eventId}`}

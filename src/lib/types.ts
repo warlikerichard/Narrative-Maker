@@ -33,7 +33,12 @@ export interface NarrativeEntity {
   characterTypeId: string | null;
   updatedAt: string;
 }
-export type ActionResult = { error?: string; id?: string; success?: boolean };
+export type ActionResult = {
+  error?: string;
+  id?: string;
+  success?: boolean;
+  message?: string;
+};
 
 // ========== Story event types ==========
 

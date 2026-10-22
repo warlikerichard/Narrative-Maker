@@ -97,8 +97,8 @@ export function EditorForm({
                   onChange={(event) => {
                     const selected = event.target.files?.[0];
                     if (!selected) return;
-                    if (selected.size > 2 * 1024 * 1024) {
-                      setError("Choose an image smaller than 2 MB.");
+                    if (selected.size > 10 * 1024 * 1024) {
+                      setError("Choose an image up to 10 MB.");
                       event.target.value = "";
                       return;
                     }
@@ -108,7 +108,10 @@ export function EditorForm({
                   }}
                 />
               </label>
-              <small>PNG, JPG or WebP · up to 2 MB</small>
+              <small>
+                PNG, JPG or WebP · up to 10 MB · automatically compressed to 200
+                KB
+              </small>
               {preview && (
                 <button
                   type="button"

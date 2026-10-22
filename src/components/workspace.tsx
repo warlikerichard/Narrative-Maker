@@ -55,11 +55,7 @@ import {
 import { EditorForm } from "./editor-form";
 import { Modal } from "./modal";
 import { StoryEventForm } from "./story-event-form";
-import {
-  clearLocalProjectEvents,
-  deleteLocalStoryEvent,
-  useLocalStoryEvents,
-} from "@/lib/local-story-events";
+import { deleteStoryEvent, useStoryEvents } from "@/lib/story-events";
 
 const icons: Record<EntityKind, LucideIcon> = {
   character: Users,
@@ -110,9 +106,9 @@ export function Workspace({
     error?: boolean;
   } | null>(null);
   const types = entities.filter((entity) => entity.kind === "characterType");
-  const localStories = useLocalStoryEvents(user.id);
-  // Adapt local events for the existing cards only. Do not send these records to saveEntity.
-  const storyEntries: NarrativeEntity[] = localStories.events
+  const stories = useStoryEvents(user.id);
+  // Story documents use their dedicated persistence endpoint.
+  const storyEntries: NarrativeEntity[] = stories.events
     .filter((event) => event.projectId === project?.id)
     .map((event) => ({
       id: event.id,
@@ -140,7 +136,7 @@ export function Workspace({
     }));
   const allEntries = [...entities, ...storyEntries];
   const displayProjects = projects.map((entry) => {
-    const events = localStories.events.filter(
+    const events = stories.events.filter(
       (event) => event.projectId === entry.id,
     );
     return {
@@ -193,14 +189,15 @@ export function Workspace({
   async function confirmDelete() {
     if (!deletion) return;
     if (deletion.type === "entity" && deletion.entity.kind === "storyEvent") {
+      setBusy(true);
       try {
-        deleteLocalStoryEvent(
+        await deleteStoryEvent(
           user.id,
           deletion.entity.projectId,
           deletion.entity.id,
         );
         setDeletion(null);
-        setMessage({ text: "Story event deleted from this browser." });
+        setMessage({ text: "Story event deleted." });
       } catch (error) {
         setMessage({
           text:
@@ -209,6 +206,8 @@ export function Workspace({
               : "Could not delete this event.",
           error: true,
         });
+      } finally {
+        setBusy(false);
       }
       return;
     }
@@ -220,16 +219,6 @@ export function Workspace({
       "Deleted successfully.",
     );
     if (result?.success) {
-      if (deletion.type === "project") {
-        try {
-          clearLocalProjectEvents(user.id, deletion.project.id);
-        } catch {
-          setMessage({
-            text: "Project deleted. Its local story events could not be cleared from this browser.",
-            error: true,
-          });
-        }
-      }
       setDeletion(null);
       if (deletion.type === "project" && project?.id === deletion.project.id)
         router.push("/");
@@ -680,15 +669,15 @@ export function Workspace({
                 </div>
               </div>
             </div>
-            {localStories.error && (
+            {stories.error && (
               <p className="form-error" role="alert">
-                {localStories.error}
+                {stories.error}
               </p>
             )}
             {project && kind === "storyEvent" && (
               <p className="story-local-note story-library-note">
-                Story events are saved in this browser only. Open an event to
-                edit its sections and characters.
+                Story events are saved to your account. Open an event to edit
+                its sections and characters.
               </p>
             )}
             {project ? (
@@ -918,7 +907,7 @@ export function Workspace({
               : deletion.entity.name}
             ” will be permanently deleted.
             {deletion.type === "project" &&
-              " All characters, regions, items, character types, and story events in this browser will also be deleted."}{" "}
+              " All characters, regions, items, character types, and story events will also be deleted."}{" "}
             This cannot be undone.
           </p>
           {message?.error && (
@@ -953,6 +942,7 @@ export function Workspace({
         >
           {details.image && (
             <img
+              loading="lazy"
               className="detail-image"
               src={details.image}
               alt={details.name}
@@ -1042,7 +1032,15 @@ function ProjectCard({
     <article className="project-card">
       <div className="project-cover">
         {project.image ? (
-          <img src={project.image} alt="" />
+          <img
+            loading="lazy"
+            src={
+              project.image.startsWith("/api/images/")
+                ? `${project.image}?thumbnail=1`
+                : project.image
+            }
+            alt=""
+          />
         ) : (
           <div className="cover-placeholder">
             <Compass size={64} />
@@ -1111,7 +1109,15 @@ function EntityCard({
         aria-label={`View ${entity.name}`}
       >
         {entity.image ? (
-          <img src={entity.image} alt="" />
+          <img
+            loading="lazy"
+            src={
+              entity.image.startsWith("/api/images/")
+                ? `${entity.image}?thumbnail=1`
+                : entity.image
+            }
+            alt=""
+          />
         ) : (
           <div className="entity-art">
             <Icon size={48} strokeWidth={1} />

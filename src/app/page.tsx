@@ -10,7 +10,9 @@ export default async function Home({
   searchParams: Promise<{ view?: string }>;
 }) {
   const user = await requireUser();
-  const projects = new NarrativeRepository(getDatabase()).listProjects(user.id);
+  const projects = await new NarrativeRepository(
+    await getDatabase(),
+  ).listProjects(user.id);
   const { view } = await searchParams;
   return (
     <Workspace

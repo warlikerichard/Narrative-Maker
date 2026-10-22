@@ -4,8 +4,7 @@ const nextConfig: NextConfig = {
   // Keep the browser-test server separate from a running development server.
   distDir: process.env.NEXT_DIST_DIR || ".next",
   devIndicators: false,
-  serverExternalPackages: ["better-sqlite3"],
-  experimental: { serverActions: { bodySizeLimit: "4mb" } },
+  experimental: { serverActions: { bodySizeLimit: "12mb" } },
   async headers() {
     return [
       {

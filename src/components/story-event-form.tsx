@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
-import { saveLocalStoryEvent } from "@/lib/local-story-events";
+import { saveStoryEvent } from "@/lib/story-events";
 import { Modal } from "./modal";
 import { StoryImageField } from "./story-image-field";
 
@@ -22,7 +22,7 @@ export function StoryEventForm({
   const [imageBusy, setImageBusy] = useState(false);
   const [error, setError] = useState("");
 
-  function create(event: React.FormEvent<HTMLFormElement>) {
+  async function create(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (imageBusy) return;
     const trimmedTitle = title.trim();
@@ -32,7 +32,8 @@ export function StoryEventForm({
     }
     try {
       const id = crypto.randomUUID();
-      saveLocalStoryEvent(userId, {
+      setImageBusy(true);
+      await saveStoryEvent(userId, {
         id,
         projectId,
         title: trimmedTitle,
@@ -44,6 +45,7 @@ export function StoryEventForm({
       onClose();
       router.push(`/projects/${projectId}/story-events/${id}`);
     } catch (error) {
+      setImageBusy(false);
       setError(
         error instanceof Error ? error.message : "Could not create this event.",
       );
@@ -76,8 +78,8 @@ export function StoryEventForm({
           />
         </label>
         <p className="story-local-note">
-          Saved in this browser only. Sections and characters can be added on
-          the next page.
+          Saved to your account. Sections and characters can be added on the
+          next page.
         </p>
         {error && (
           <p role="alert" className="form-error">
